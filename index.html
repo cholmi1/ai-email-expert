@@ -29,6 +29,7 @@
 }
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 *,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--ink);
   font-family:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
   font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
@@ -89,6 +90,20 @@ button.small{padding:6px 11px;font-size:13px;font-weight:500}
 .copied{background:var(--ok-soft)!important;color:var(--ok)!important;border-color:var(--ok)!important}
 .notice{margin-top:14px;padding:12px 14px;border-radius:6px;border:1px solid var(--line);background:var(--field);color:var(--muted);font-size:14px}
 .notice[hidden]{display:none}
+.keybox{margin-bottom:16px}
+.keybox summary{cursor:pointer;font-weight:600;font-size:14px;padding:4px 0;list-style:none;display:flex;align-items:center;gap:8px}
+.keybox summary::-webkit-details-marker{display:none}
+.keybox summary::before{content:"▸";color:var(--muted);transition:transform .15s}
+.keybox[open] summary::before{transform:rotate(90deg)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--red);display:inline-block}
+.dot.on{background:var(--ok)}
+.keygrid{display:grid;grid-template-columns:2fr 1fr auto;gap:12px;align-items:end;margin-top:10px}
+@media (max-width:860px){.keygrid{grid-template-columns:1fr}}
+input[type=password],input[type=text]{width:100%;font:inherit;color:var(--ink);background:var(--field);border:1px solid var(--line);border-radius:6px;padding:10px 12px}
+input:focus{outline:2px solid var(--accent);outline-offset:1px}
+.keybtns{display:flex;gap:8px}
+.keynote{margin:10px 0 0;font-size:13px;color:var(--muted)}
+.keynote a{color:var(--accent)}
 footer{margin-top:22px;color:var(--muted);font-size:13px}
 </style>
 </head>
@@ -102,6 +117,29 @@ footer{margin-top:22px;color:var(--muted);font-size:13px}
   </header>
 
   <section class="sheet" aria-label="입력">
+    <details class="keybox" id="keybox">
+      <summary><span class="dot" id="keyDot" aria-hidden="true"></span><span id="keyLabel">API 키 설정 필요</span></summary>
+      <div class="keygrid">
+        <div>
+          <label class="lbl" for="apiKey">Anthropic API 키</label>
+          <input type="password" id="apiKey" placeholder="sk-ant-로 시작하는 키" autocomplete="off" spellcheck="false">
+        </div>
+        <div>
+          <label class="lbl" for="model">모델</label>
+          <select id="model">
+            <option value="claude-sonnet-5-5" selected>Sonnet 5.5 (권장 · 균형)</option>
+            <option value="claude-opus-5-5">Opus 5.5 (최고 품질 · 비용 높음)</option>
+            <option value="claude-haiku-5-5">Haiku 5.5 (빠르고 저렴)</option>
+          </select>
+        </div>
+        <div class="keybtns">
+          <button type="button" id="keySave">저장</button>
+          <button type="button" id="keyDel">삭제</button>
+        </div>
+      </div>
+      <p class="keynote">키는 이 브라우저에만 저장되고, Anthropic 서버로만 직접 전송됩니다. 공용 PC에서는 사용 후 꼭 삭제해 주세요.
+        키 발급: <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a></p>
+    </details>
     <div class="inputs">
       <div>
         <label class="lbl" for="customerEmail">받은 이메일 원문</label>
@@ -133,7 +171,7 @@ footer{margin-top:22px;color:var(--muted);font-size:13px}
       <button type="button" id="resetBtn">모두 지우기</button>
       <div class="status" id="status" role="status" aria-live="polite"></div>
     </div>
-    <div class="notice" id="notice" hidden>이 화면에서는 AI 작성 기능을 쓸 수 없습니다. claude.ai에서 이 페이지를 열어 주세요.</div>
+    <div class="notice" id="notice" hidden>먼저 위의 API 키 설정에서 Anthropic API 키를 저장해 주세요.</div>
   </section>
 
   <section class="letters" aria-label="결과">
@@ -194,7 +232,40 @@ footer{margin-top:22px;color:var(--muted);font-size:13px}
     firm: 'Firm and clear about our position while remaining respectful and constructive.'
   };
 
-  let sample = null, ctl = null, busy = false;
+  let ctl = null, busy = false, apiKey = '';
+  const keyEls = { box: $('#keybox'), input: $('#apiKey'), model: $('#model'), save: $('#keySave'), del: $('#keyDel'), dot: $('#keyDot'), label: $('#keyLabel') };
+  const ready = () => !!apiKey;
+
+  async function callClaude(prompt, signal, maxTokens){
+    let res;
+    try {
+      res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST', signal,
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({ model: keyEls.model.value, max_tokens: maxTokens || 4096,
+          messages: [{ role: 'user', content: prompt }] })
+      });
+    } catch(e){ throw { code: e && e.name === 'AbortError' ? 'cancelled' : 'network' }; }
+    let data = null; try { data = await res.json(); } catch(e){}
+    if (!res.ok){
+      const map = { 400:'bad_request', 401:'bad_key', 403:'forbidden', 404:'bad_model', 413:'prompt_too_large', 429:'rate_limited', 529:'overloaded' };
+      throw { code: map[res.status] || (res.status >= 500 ? 'overloaded' : 'upstream_error'), detail: data && data.error && data.error.message };
+    }
+    const text = (data && data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+    if (!text) throw { code: 'empty_completion' };
+    return text;
+  }
+  function parseJson(text){
+    const t = text.replace(/```json|```/g, '').trim();
+    const a = t.indexOf('{'), b = t.lastIndexOf('}');
+    if (a < 0 || b < a) throw { code: 'invalid_json' };
+    try { return JSON.parse(t.slice(a, b + 1)); } catch(e){ throw { code: 'invalid_json' }; }
+  }
 
   // 서명은 이 브라우저에만 저장
   try { const s = localStorage.getItem('aiMail.signature'); if (s) els.sig.value = s; } catch(e){}
@@ -276,19 +347,22 @@ footer{margin-top:22px;color:var(--muted);font-size:13px}
   }
   function setBusy(b){
     busy = b;
-    els.gen.disabled = b || !sample; els.reset.disabled = b;
-    en.syncBtn.disabled = b || !sample; ko.syncBtn.disabled = b || !sample;
+    els.gen.disabled = b; els.reset.disabled = b;
+    en.syncBtn.disabled = b; ko.syncBtn.disabled = b;
     els.stop.hidden = !b;
   }
   function errMsg(e){
     switch (e && e.code){
       case 'cancelled': return '중지했습니다.';
-      case 'not_granted': return 'AI 사용이 허용되지 않았습니다. 페이지를 새로 열고 허용을 눌러 주세요.';
-      case 'rate_limited': case 'queue_overflow': return '요청이 많습니다. 잠시 뒤에 다시 눌러 주세요.';
+      case 'bad_key': return 'API 키가 올바르지 않습니다. 키 설정에서 다시 확인해 주세요.';
+      case 'forbidden': return '이 API 키로는 요청 권한이 없습니다. 콘솔에서 키 권한과 결제 상태를 확인해 주세요.';
+      case 'bad_model': return '선택한 모델을 쓸 수 없습니다. 키 설정에서 다른 모델을 골라 주세요.';
+      case 'bad_request': return '요청이 거절되었습니다. 크레딧 잔액 또는 입력 내용을 확인해 주세요.';
+      case 'network': return '인터넷 연결 또는 브라우저 보안 설정 때문에 요청을 보내지 못했습니다.';
+      case 'overloaded': return 'AI 서버가 혼잡합니다. 잠시 뒤에 다시 눌러 주세요.';
+      case 'rate_limited': return '요청이 많습니다. 잠시 뒤에 다시 눌러 주세요.';
       case 'prompt_too_large': return '받은 메일이 너무 깁니다. 핵심 부분만 남겨 다시 시도해 주세요.';
       case 'invalid_json': case 'empty_completion': return '답장 형식이 깨져 나왔습니다. 한 번 더 눌러 주세요.';
-      case 'refused': return 'AI가 이 내용으로는 작성하지 않았습니다. 입력 내용을 확인해 주세요.';
-      case 'session_expired': return '로그인 세션이 만료되었습니다. 페이지를 새로 고쳐 주세요.';
       default: return '작성하지 못했습니다. 잠시 뒤 다시 시도해 주세요.';
     }
   }
@@ -348,7 +422,8 @@ ${text}
 
   // ---------- 동작 ----------
   els.gen.addEventListener('click', async () => {
-    if (!sample || busy) return;
+    if (busy) return;
+    if (!ready()){ els.notice.hidden = false; keyEls.box.open = true; keyEls.input.focus(); return; }
     if (!els.email.value.trim() || !els.points.value.trim()){
       say('받은 이메일 원문과 꼭 넣을 내용을 둘 다 적어 주세요.', 'err');
       (els.email.value.trim() ? els.points : els.email).focus();
@@ -358,8 +433,7 @@ ${text}
     say('받은 메일을 분석하고 답장 전략을 세우는 중입니다. 보통 20~60초 걸립니다.', '', true);
     en.root.classList.add('busy'); ko.root.classList.add('busy');
     try {
-      const out = await sample.json(genPrompt(), { signal: ctl.signal, modelTier: 'complex', cache: false,
-        onText: () => say('답장을 쓰는 중입니다…', '', true) });
+      const out = parseJson(await callClaude(genPrompt(), ctl.signal, 8000));
       if (!out || typeof out.english !== 'string' || typeof out.korean !== 'string') throw { code: 'invalid_json' };
       en.set(out.english.trim()); ko.set(out.korean.trim());
       en.setDirty(false); ko.setDirty(false); en.setMode('preview'); ko.setMode('preview');
@@ -369,12 +443,13 @@ ${text}
   });
 
   async function syncFrom(src, dst, target){
-    if (!sample || busy || !src.value.trim()) return;
+    if (busy || !src.value.trim()) return;
+    if (!ready()){ els.notice.hidden = false; keyEls.box.open = true; keyEls.input.focus(); return; }
     ctl = new AbortController(); setBusy(true);
     dst.root.classList.add('busy');
     say(target === 'ko' ? '고친 영문에 맞춰 한글 대조본을 다시 만드는 중입니다…' : '고친 한글에 맞춰 영문 답장을 다시 만드는 중입니다…', '', true);
     try {
-      const { text } = await sample(transPrompt(src.value, target), { signal: ctl.signal, modelTier: 'default' });
+      const text = await callClaude(transPrompt(src.value, target), ctl.signal, 4096);
       if (!text.trim()) throw { code: 'empty_completion' };
       dst.set(text.trim()); src.setDirty(false); dst.setDirty(false);
       say(target === 'ko' ? '한글 대조본에 반영했습니다.' : '영문 답장에 반영했습니다.', 'ok');
@@ -393,15 +468,31 @@ ${text}
     els.email.focus();
   });
 
-  // ---------- AI 연결 ----------
-  els.gen.disabled = true;
-  if (window.claude && typeof window.claude.use === 'function'){
-    window.claude.use('sample').then(s => {
-      sample = s || null;
-      if (!sample) els.notice.hidden = false;
-      setBusy(false);
-    }).catch(() => { els.notice.hidden = false; });
-  } else { els.notice.hidden = false; }
+  // ---------- API 키 ----------
+  function showKeyState(){
+    keyEls.dot.classList.toggle('on', ready());
+    keyEls.label.textContent = ready() ? 'API 키 저장됨 · ' + keyEls.model.options[keyEls.model.selectedIndex].text.split(' (')[0] : 'API 키 설정 필요';
+    if (ready()) els.notice.hidden = true;
+  }
+  try {
+    apiKey = localStorage.getItem('aiMail.apiKey') || '';
+    const m = localStorage.getItem('aiMail.model'); if (m && [...keyEls.model.options].some(o => o.value === m)) keyEls.model.value = m;
+  } catch(e){}
+  if (apiKey) keyEls.input.value = apiKey; else keyEls.box.open = true;
+  keyEls.save.addEventListener('click', () => {
+    const v = keyEls.input.value.trim();
+    if (!v.startsWith('sk-ant-')){ say('Anthropic API 키는 sk-ant-로 시작합니다. 다시 확인해 주세요.', 'err'); keyEls.input.focus(); return; }
+    apiKey = v;
+    try { localStorage.setItem('aiMail.apiKey', v); localStorage.setItem('aiMail.model', keyEls.model.value); } catch(e){}
+    showKeyState(); keyEls.box.open = false; say('API 키를 저장했습니다.', 'ok');
+  });
+  keyEls.del.addEventListener('click', () => {
+    apiKey = ''; keyEls.input.value = '';
+    try { localStorage.removeItem('aiMail.apiKey'); } catch(e){}
+    showKeyState(); say('API 키를 이 브라우저에서 삭제했습니다.');
+  });
+  keyEls.model.addEventListener('change', () => { try { localStorage.setItem('aiMail.model', keyEls.model.value); } catch(e){} showKeyState(); });
+  showKeyState(); setBusy(false);
 })();
 </script>
 </body>
