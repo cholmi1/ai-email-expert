@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AI 이메일 전문가</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EEF1F4; --paper:#FFFFFF; --field:#FAFBFC; --ink:#18233A; --muted:#5B6577; --line:#D5DBE3;
+  --accent:#1D4E89; --accent-hover:#163D6C; --accent-ink:#FFFFFF; --accent-soft:#E4ECF6;
+  --red:#B4232F; --ok:#1E7A4C; --ok-soft:#E3F2EA;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#10151F; --paper:#182030; --field:#1C2536; --ink:#E6EAF0; --muted:#9AA4B5; --line:#2C3649;
+    --accent:#6FA3E0; --accent-hover:#8BB6E8; --accent-ink:#0E1A2C; --accent-soft:#1F2D44;
+    --red:#E0606A; --ok:#5CC48D; --ok-soft:#173226;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10151F; --paper:#182030; --field:#1C2536; --ink:#E6EAF0; --muted:#9AA4B5; --line:#2C3649;
+  --accent:#6FA3E0; --accent-hover:#8BB6E8; --accent-ink:#0E1A2C; --accent-soft:#1F2D44;
+  --red:#E0606A; --ok:#5CC48D; --ok-soft:#173226;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:28px 20px 48px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:22px}
+h1{font-size:26px;line-height:1.25;margin:0;font-weight:700;letter-spacing:-0.02em}
+header p{margin:4px 0 0;color:var(--muted);font-size:14px}
+
+.sheet{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:22px}
+.inputs{display:grid;grid-template-columns:3fr 2fr;gap:20px}
+@media (max-width:860px){.inputs{grid-template-columns:1fr}}
+label.lbl{display:block;font-weight:600;font-size:14px;margin-bottom:6px}
+.hint{font-weight:400;color:var(--muted);font-size:13px;margin-left:6px}
+textarea,select{width:100%;font:inherit;color:var(--ink);background:var(--field);
+  border:1px solid var(--line);border-radius:6px;padding:12px 14px;resize:vertical}
+textarea{min-height:220px;line-height:1.65}
+textarea:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.opts{display:grid;grid-template-columns:1fr 2fr;gap:20px;margin-top:18px}
+@media (max-width:860px){.opts{grid-template-columns:1fr}}
+.opts textarea{min-height:76px}
+
+.actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}
+button{font:inherit;cursor:pointer;border-radius:6px;border:1px solid var(--line);background:var(--paper);color:var(--ink);
+  padding:10px 16px;font-weight:600;font-size:14px;display:inline-flex;align-items:center;gap:7px}
+button:hover:not(:disabled){border-color:var(--muted)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);padding:11px 22px}
+button.primary:hover:not(:disabled){background:var(--accent-hover);border-color:var(--accent-hover)}
+button.small{padding:6px 11px;font-size:13px;font-weight:500}
+.status{font-size:14px;color:var(--muted);min-height:22px;flex:1 1 220px}
+.status.err{color:var(--red)}
+.status.ok{color:var(--ok)}
+.spin{width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .8s linear infinite;display:inline-block;vertical-align:-2px;margin-right:6px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}}
+
+/* 결과: 항공우편 봉투 테두리 */
+.letters{margin-top:26px;position:relative;background:var(--paper);border-radius:10px;padding:6px;
+  background-image:repeating-linear-gradient(135deg,var(--red) 0 12px,transparent 12px 18px,var(--accent) 18px 30px,transparent 30px 36px)}
+.letters-inner{background:var(--paper);border-radius:6px;padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:22px}
+@media (max-width:860px){.letters-inner{grid-template-columns:1fr}}
+.pane-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.pane-head h2{font-size:17px;margin:0;font-weight:700}
+.pane-head h2 small{font-weight:400;color:var(--muted);font-size:13px;margin-left:6px}
+.tools{display:flex;gap:6px;flex-wrap:wrap}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{border:0;border-radius:0;padding:6px 11px;font-size:13px;font-weight:500;background:transparent;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--ink);font-weight:600}
+.view{min-height:340px;max-height:560px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:16px 18px;background:var(--field);word-break:keep-all;overflow-wrap:anywhere}
+.view p{margin:0 0 4px}
+.view .gap{height:12px}
+.view strong{font-weight:700;color:var(--ink);background:var(--accent-soft);padding:0 2px;border-radius:2px}
+.view .empty{color:var(--muted)}
+.pane textarea{min-height:340px;max-height:560px}
+.pane.busy .view,.pane.busy textarea{opacity:.45}
+.sync{margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.sync[hidden]{display:none}
+.copied{background:var(--ok-soft)!important;color:var(--ok)!important;border-color:var(--ok)!important}
+.notice{margin-top:14px;padding:12px 14px;border-radius:6px;border:1px solid var(--line);background:var(--field);color:var(--muted);font-size:14px}
+.notice[hidden]{display:none}
+footer{margin-top:22px;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>AI 이메일 전문가</h1>
+      <p>받은 메일과 꼭 넣을 내용만 적으면, 영문 답장과 한글 대조본을 함께 만들어 드립니다.</p>
+    </div>
+  </header>
+
+  <section class="sheet" aria-label="입력">
+    <div class="inputs">
+      <div>
+        <label class="lbl" for="customerEmail">받은 이메일 원문</label>
+        <textarea id="customerEmail" placeholder="거래처나 고객에게 받은 메일을 그대로 붙여넣으세요."></textarea>
+      </div>
+      <div>
+        <label class="lbl" for="keyPoints">답장에 꼭 넣을 내용<span class="hint">한 줄에 하나씩</span></label>
+        <textarea id="keyPoints" placeholder="예)&#10;- 견적서 수령 확인&#10;- 다음 주 화요일 오후 2시 화상회의 제안&#10;- 인증서 사본은 금요일까지 송부"></textarea>
+      </div>
+    </div>
+    <div class="opts">
+      <div>
+        <label class="lbl" for="tone">말투</label>
+        <select id="tone">
+          <option value="formal">격식 있게 (첫 거래·공식 회신)</option>
+          <option value="warm" selected>정중하지만 부드럽게 (기존 거래처)</option>
+          <option value="brief">간결하게 (빠른 확인 회신)</option>
+          <option value="firm">단호하지만 예의 있게 (조건 협상·거절)</option>
+        </select>
+      </div>
+      <div>
+        <label class="lbl" for="signature">서명<span class="hint">비워두면 서명 자리만 남깁니다 · 이 브라우저에 저장</span></label>
+        <textarea id="signature" placeholder="예)&#10;Best regards,&#10;홍길동 / Executive Director&#10;Company Name"></textarea>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="button" class="primary" id="genBtn">답장 만들기</button>
+      <button type="button" id="stopBtn" hidden>중지</button>
+      <button type="button" id="resetBtn">모두 지우기</button>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
+    </div>
+    <div class="notice" id="notice" hidden>이 화면에서는 AI 작성 기능을 쓸 수 없습니다. claude.ai에서 이 페이지를 열어 주세요.</div>
+  </section>
+
+  <section class="letters" aria-label="결과">
+    <div class="letters-inner">
+      <div class="pane" id="paneEn">
+        <div class="pane-head">
+          <h2>영문 답장<small>보낼 메일</small></h2>
+          <div class="tools">
+            <div class="seg" role="group" aria-label="보기 방식">
+              <button type="button" data-mode="preview" aria-pressed="true">미리보기</button>
+              <button type="button" data-mode="edit" aria-pressed="false">직접 수정</button>
+            </div>
+            <button type="button" class="small copyBtn">복사</button>
+          </div>
+        </div>
+        <div class="view"></div>
+        <textarea hidden aria-label="영문 답장 수정"></textarea>
+        <div class="sync" hidden>
+          <span>영문을 고쳤습니다.</span>
+          <button type="button" class="small syncBtn">한글 대조본에 반영</button>
+        </div>
+      </div>
+      <div class="pane" id="paneKo">
+        <div class="pane-head">
+          <h2>한글 대조본<small>확인용</small></h2>
+          <div class="tools">
+            <div class="seg" role="group" aria-label="보기 방식">
+              <button type="button" data-mode="preview" aria-pressed="true">미리보기</button>
+              <button type="button" data-mode="edit" aria-pressed="false">직접 수정</button>
+            </div>
+            <button type="button" class="small copyBtn">복사</button>
+          </div>
+        </div>
+        <div class="view"></div>
+        <textarea hidden aria-label="한글 대조본 수정"></textarea>
+        <div class="sync" hidden>
+          <span>한글을 고쳤습니다.</span>
+          <button type="button" class="small syncBtn">영문 답장에 반영</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>굵게 표시된 부분은 요청하신 핵심 내용입니다. 복사하면 메일 프로그램에도 굵은 글씨가 그대로 들어갑니다.</footer>
+</div>
+
+<script>
+(function(){
+  const $ = s => document.querySelector(s);
+  const els = {
+    email: $('#customerEmail'), points: $('#keyPoints'), tone: $('#tone'), sig: $('#signature'),
+    gen: $('#genBtn'), stop: $('#stopBtn'), reset: $('#resetBtn'), status: $('#status'), notice: $('#notice')
+  };
+  const TONES = {
+    formal: 'Highly formal and polished, suitable for a first contact or an official reply.',
+    warm: 'Courteous and professional, yet warm and relationship-oriented, suitable for an existing business partner.',
+    brief: 'Concise and to the point; short paragraphs, no filler, still polite.',
+    firm: 'Firm and clear about our position while remaining respectful and constructive.'
+  };
+
+  let sample = null, ctl = null, busy = false;
+
+  // 서명은 이 브라우저에만 저장
+  try { const s = localStorage.getItem('aiMail.signature'); if (s) els.sig.value = s; } catch(e){}
+  els.sig.addEventListener('input', () => { try { localStorage.setItem('aiMail.signature', els.sig.value); } catch(e){} });
+
+  // ---------- 결과 패널 ----------
+  function makePane(root, placeholder){
+    const view = root.querySelector('.view'), ta = root.querySelector('textarea'),
+          sync = root.querySelector('.sync'), copyBtn = root.querySelector('.copyBtn'),
+          segBtns = root.querySelectorAll('.seg button');
+    const pane = { root, value:'', dirty:false, mode:'preview' };
+    pane.set = (v, fromUser) => {
+      pane.value = v || '';
+      if (!fromUser) ta.value = pane.value;
+      render();
+    };
+    function render(){ view.innerHTML = pane.value.trim() ? toHtml(pane.value, true) : '<p class="empty">'+placeholder+'</p>'; }
+    pane.setDirty = d => { pane.dirty = d; sync.hidden = !d; };
+    pane.setMode = m => {
+      pane.mode = m;
+      view.hidden = m !== 'preview'; ta.hidden = m !== 'edit';
+      segBtns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
+      if (m === 'edit') ta.focus();
+    };
+    segBtns.forEach(b => b.addEventListener('click', () => pane.setMode(b.dataset.mode)));
+    ta.addEventListener('input', () => { pane.set(ta.value, true); if (pane.value.trim()) pane.setDirty(true); });
+    copyBtn.addEventListener('click', async () => {
+      if (!pane.value.trim()) { say('복사할 내용이 아직 없습니다.', 'err'); return; }
+      const ok = await copyRich(pane.value);
+      if (ok){ copyBtn.textContent = '복사됨'; copyBtn.classList.add('copied');
+        setTimeout(() => { copyBtn.textContent = '복사'; copyBtn.classList.remove('copied'); }, 1800); }
+      else say('복사하지 못했습니다. 직접 수정 화면에서 전체 선택 후 복사해 주세요.', 'err');
+    });
+    pane.syncBtn = root.querySelector('.syncBtn');
+    render();
+    return pane;
+  }
+  const en = makePane($('#paneEn'), '답장 만들기를 누르면 영문 답장이 여기에 나옵니다.');
+  const ko = makePane($('#paneKo'), '영문과 단락 구성이 같은 한글 대조본이 여기에 나옵니다.');
+
+  // ---------- 서식 변환 ----------
+  function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function toHtml(text, forView){
+    return text.split('\n').map(line => {
+      if (!line.trim()) return forView ? '<div class="gap"></div>' : '<br>';
+      const body = esc(line).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      return forView ? '<p>'+body+'</p>'
+        : '<p style="margin:0 0 6px 0;line-height:1.6;font-family:Arial,\'Malgun Gothic\',sans-serif;color:#1e293b;">'+body+'</p>';
+    }).join('');
+  }
+  async function copyRich(text){
+    const plain = text.replace(/\*\*/g,''), html = toHtml(text, false);
+    try {
+      if (navigator.clipboard && window.ClipboardItem){
+        await navigator.clipboard.write([new ClipboardItem({
+          'text/html': new Blob([html],{type:'text/html'}), 'text/plain': new Blob([plain],{type:'text/plain'})
+        })]);
+        return true;
+      }
+    } catch(e){}
+    try {
+      const box = document.createElement('div');
+      box.contentEditable = 'true'; box.innerHTML = html;
+      box.style.cssText = 'position:fixed;left:-9999px;top:0;white-space:normal';
+      document.body.appendChild(box);
+      const r = document.createRange(); r.selectNodeContents(box);
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      const ok = document.execCommand('copy');
+      sel.removeAllRanges(); box.remove();
+      if (ok) return true;
+    } catch(e){}
+    try { await navigator.clipboard.writeText(plain); return true; } catch(e){ return false; }
+  }
+
+  // ---------- 상태 ----------
+  function say(msg, kind, spinning){
+    els.status.className = 'status' + (kind ? ' '+kind : '');
+    els.status.innerHTML = (spinning ? '<span class="spin" aria-hidden="true"></span>' : '') + esc(msg);
+  }
+  function setBusy(b){
+    busy = b;
+    els.gen.disabled = b || !sample; els.reset.disabled = b;
+    en.syncBtn.disabled = b || !sample; ko.syncBtn.disabled = b || !sample;
+    els.stop.hidden = !b;
+  }
+  function errMsg(e){
+    switch (e && e.code){
+      case 'cancelled': return '중지했습니다.';
+      case 'not_granted': return 'AI 사용이 허용되지 않았습니다. 페이지를 새로 열고 허용을 눌러 주세요.';
+      case 'rate_limited': case 'queue_overflow': return '요청이 많습니다. 잠시 뒤에 다시 눌러 주세요.';
+      case 'prompt_too_large': return '받은 메일이 너무 깁니다. 핵심 부분만 남겨 다시 시도해 주세요.';
+      case 'invalid_json': case 'empty_completion': return '답장 형식이 깨져 나왔습니다. 한 번 더 눌러 주세요.';
+      case 'refused': return 'AI가 이 내용으로는 작성하지 않았습니다. 입력 내용을 확인해 주세요.';
+      case 'session_expired': return '로그인 세션이 만료되었습니다. 페이지를 새로 고쳐 주세요.';
+      default: return '작성하지 못했습니다. 잠시 뒤 다시 시도해 주세요.';
+    }
+  }
+
+  // ---------- 프롬프트 ----------
+  function genPrompt(){
+    const sig = els.sig.value.trim();
+    return `You are a world-class business email strategist writing on behalf of the user (a Korean company executive handling overseas sales, certification and partner relations).
+
+Think before writing:
+1. Analyse the received email: context, the sender's intent, open questions, and emotional tone.
+2. Plan how to place every key point so the reply is persuasive and answers everything the sender asked.
+3. Write the reply in polished business English.
+
+Tone: ${TONES[els.tone.value]}
+
+Format rules (mandatory):
+- First line: "Subject: Re: ..." (reuse the original subject if one is visible). Korean version uses "제목: Re: ...".
+- Put a blank line (double line break) between Subject, salutation, each body paragraph, closing, and sign-off.
+- Split the body into 2–3 logical paragraphs when it is long.
+- Wrap the key facts from the key points (dates, times, numbers, requests, confirmations) in **double asterisks** for bold. Bold short phrases, not whole sentences.
+- Address the sender by name if the received email shows it.
+- Never invent facts, prices, dates or commitments that are not in the inputs.
+- ${sig ? 'End with exactly this signature block (translate only words that are clearly translatable for the Korean version, keep names as written):\n"""' + sig + '"""' : 'End with a closing such as "Best regards," followed by a placeholder line "[Your Name]".'}
+
+The Korean version must be a natural, professional Korean rendering with the identical paragraph structure, line breaks and bold positions.
+
+Received email:
+"""
+${els.email.value.trim()}
+"""
+
+Key points the reply must include:
+"""
+${els.points.value.trim()}
+"""
+
+Reply with ONLY a JSON object, no code fence, in this exact shape:
+{"english": "<full English email>", "korean": "<full Korean version>"}`;
+  }
+  function transPrompt(text, target){
+    const lang = target === 'en' ? 'professional business English' : 'natural, professional Korean';
+    return `Translate the following business email into ${lang}.
+
+Rules:
+- Keep the paragraph structure and every line break (including blank lines) exactly as in the source.
+- Keep **double-asterisk bold** markers around the same pieces of information.
+- Keep the subject line format ("Subject:" in English, "제목:" in Korean).
+- Keep names, company names, product codes and numbers unchanged.
+- Output ONLY the translated email, with no preface or explanation.
+
+Email:
+"""
+${text}
+"""`;
+  }
+
+  // ---------- 동작 ----------
+  els.gen.addEventListener('click', async () => {
+    if (!sample || busy) return;
+    if (!els.email.value.trim() || !els.points.value.trim()){
+      say('받은 이메일 원문과 꼭 넣을 내용을 둘 다 적어 주세요.', 'err');
+      (els.email.value.trim() ? els.points : els.email).focus();
+      return;
+    }
+    ctl = new AbortController(); setBusy(true);
+    say('받은 메일을 분석하고 답장 전략을 세우는 중입니다. 보통 20~60초 걸립니다.', '', true);
+    en.root.classList.add('busy'); ko.root.classList.add('busy');
+    try {
+      const out = await sample.json(genPrompt(), { signal: ctl.signal, modelTier: 'complex', cache: false,
+        onText: () => say('답장을 쓰는 중입니다…', '', true) });
+      if (!out || typeof out.english !== 'string' || typeof out.korean !== 'string') throw { code: 'invalid_json' };
+      en.set(out.english.trim()); ko.set(out.korean.trim());
+      en.setDirty(false); ko.setDirty(false); en.setMode('preview'); ko.setMode('preview');
+      say('답장을 만들었습니다. 영문 답장의 복사를 눌러 메일에 붙여넣으세요.', 'ok');
+    } catch(e){ say(errMsg(e), e && e.code === 'cancelled' ? '' : 'err'); }
+    finally { en.root.classList.remove('busy'); ko.root.classList.remove('busy'); setBusy(false); }
+  });
+
+  async function syncFrom(src, dst, target){
+    if (!sample || busy || !src.value.trim()) return;
+    ctl = new AbortController(); setBusy(true);
+    dst.root.classList.add('busy');
+    say(target === 'ko' ? '고친 영문에 맞춰 한글 대조본을 다시 만드는 중입니다…' : '고친 한글에 맞춰 영문 답장을 다시 만드는 중입니다…', '', true);
+    try {
+      const { text } = await sample(transPrompt(src.value, target), { signal: ctl.signal, modelTier: 'default' });
+      if (!text.trim()) throw { code: 'empty_completion' };
+      dst.set(text.trim()); src.setDirty(false); dst.setDirty(false);
+      say(target === 'ko' ? '한글 대조본에 반영했습니다.' : '영문 답장에 반영했습니다.', 'ok');
+    } catch(e){ say(errMsg(e), e && e.code === 'cancelled' ? '' : 'err'); }
+    finally { dst.root.classList.remove('busy'); setBusy(false); }
+  }
+  en.syncBtn.addEventListener('click', () => syncFrom(en, ko, 'ko'));
+  ko.syncBtn.addEventListener('click', () => syncFrom(ko, en, 'en'));
+
+  els.stop.addEventListener('click', () => ctl && ctl.abort());
+  els.reset.addEventListener('click', () => {
+    els.email.value = ''; els.points.value = '';
+    en.set(''); ko.set(''); en.setDirty(false); ko.setDirty(false);
+    en.setMode('preview'); ko.setMode('preview');
+    say('입력과 결과를 모두 지웠습니다. 서명과 말투 설정은 그대로 둡니다.');
+    els.email.focus();
+  });
+
+  // ---------- AI 연결 ----------
+  els.gen.disabled = true;
+  if (window.claude && typeof window.claude.use === 'function'){
+    window.claude.use('sample').then(s => {
+      sample = s || null;
+      if (!sample) els.notice.hidden = false;
+      setBusy(false);
+    }).catch(() => { els.notice.hidden = false; });
+  } else { els.notice.hidden = false; }
+})();
+</script>
+</body>
+</html>
